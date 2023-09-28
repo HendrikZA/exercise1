@@ -1,0 +1,13 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: sre-interview
+build:
+  artifacts:
+    - image: sretest1
+      buildpacks:
+        builder: gcr.io/buildpacks/builder:v1
+manifests:
+  rawYaml:
+    - kubernetes/clsi.yaml
+    - kubernetes/web.yaml
