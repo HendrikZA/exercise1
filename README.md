@@ -1,4 +1,4 @@
-# sre-interview
+# Overleaf Interview Exercise 1
 
 ## Assignment
 
@@ -44,7 +44,7 @@ The easiest way to deploy the yaml files in this repo is with [`skaffold`](https
 export GOOGLE_CLOUD_PROJECT=...as given in your invitation... # This is set by default in Cloud Shell
 
 # Deploy Kubernetes manifests
-skaffold deploy --images=sretest1=us-east1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/sre-test/sretest1
+skaffold deploy --images=image1=us-east1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/repo1/image1
 ```
 
 However, you can use `kubectl apply -f` directly, if you update the image name in the yaml file to match the pattern in the skaffold command shown above.
@@ -69,8 +69,8 @@ gcloud --project $GOOGLE_CLOUD_PROJECT container clusters create-auto microservi
 gcloud --project $GOOGLE_CLOUD_PROJECT container clusters get-credentials microservices --location us-east1
  
 # Create image repository
-gcloud --project $GOOGLE_CLOUD_PROJECT artifacts repositories create sre-test --repository-format=docker --location=us-east1 --description="Repository for SRE Test"
+gcloud --project $GOOGLE_CLOUD_PROJECT artifacts repositories create repo1 --repository-format=docker --location=us-east1 --description="Repository for Exercise 1"
 
 # Build image and push to repository
-gcloud --project $GOOGLE_CLOUD_PROJECT builds submit --pack image=us-east1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/sre-test/sretest1:latest
+gcloud --project $GOOGLE_CLOUD_PROJECT builds submit --pack image=us-east1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/repo1/image1:latest
 ```

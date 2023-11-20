@@ -1,10 +1,10 @@
 apiVersion: skaffold/v4beta6
 kind: Config
 metadata:
-  name: sre-interview
+  name: interview-exercise1
 build:
   artifacts:
-    - image: sretest1
+    - image: image1
       buildpacks:
         builder: gcr.io/buildpacks/builder:v1
 manifests:
