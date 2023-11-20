@@ -15,7 +15,7 @@ Your objectives for this assignment are, in order of priority:
 
 1. Get the services stable. Right now, they have some issues.
 
-2. Expose the `web` application and open it in your browser so you can use it to generate some traffic.
+2. Figure out how to access the `web` application in your browser so you can use it to generate some traffic.
 
 3. Create one or more dashboards monitoring the services. You may use Google's built in tools, or third party tooling if you prefer.
 
@@ -51,7 +51,7 @@ However, you can use `kubectl apply -f` directly, if you update the image name i
 
 If you get stuck accessing the cluster, it may help to consult [these docs](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
 
-If you get stuck exposing the `web` application, it may help to consult [these docs](https://cloud.google.com/kubernetes-engine/docs/how-to/external-svc-lb-rbs). (And that is not the only way to do it.)
+If you get stuck accessing the `web` application, it may help to consult [these docs](https://cloud.google.com/kubernetes-engine/docs/how-to/external-svc-lb-rbs). (And that is not the only way to do it.)
 
 ## Background
 
