@@ -1,0 +1,162 @@
+Assessment started at 11:09 GMT
+Ended at 12:09 GMT ( 1hour limit)
+
+Task Steps:
+
+1. Had a read through README.md to gain context and understanding of what is needed to be done
+2. Installed gcloud on my computer (python 3.11 dependency already installed so it just installed additional modules)
+3. Downloaded the repo to investigate in my VS code editor
+- exported google project environment variable
+4. Logged onto the GCP project
+5. Went to Kubernetes Engine and clicked on the microservices cluster then clicked on App Errors to see if any errors are showing and found the following:
+
+Readiness probe failed: Get "http://10.16.128.140:8080/readyz": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+Back-off restarting failed container clsi in pod clsi-56f4f597f-qpjdn_default(b7a5803d-af3f-458d-8ac0-07efdad69f82)
+network is not ready: container runtime network not ready: NetworkReady=false reason:NetworkPluginNotReady message:Network plugin returns error: cni plugin not initialized
+
+PS: also could have listed pods with kubectl get pods and the used ‘describe’ to check details of a pod for any errors.
+
+6. Clicked into the first error with highest error count to investigate
+7. Had a look at the logs and noticed a few error messages there around:
+- A pod liveness probe has failed. The kubelet uses liveness probes to know when to restart a container. Please check the status of the container.
+- Readiness probe failed: Get "http://10.16.128.69:8080/readyz": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+- Liveness probe failed: Get "http://10.16.128.134:3001/livez": dial tcp 10.16.128.134:3001: connect: connection refused
+
+Observations: it seems that the connection is being refused from the liveness probe to 10.16.128.134:3001. The liveness probe I think is used by K8s to know when to restart a container. Check if the application is listening on the correct port or if perhaps the liveness probe is not monitoring the correct port.
+It’s also possible that we need to adjust the initialDelaySeconds to a higher number to give the application some time to start up.
+
+8. Checking clsi.yaml I found that the clsi container exposes port 8080 but livez is configured to check port 3001. So we need to change that to 8080 and update the config. I also compared with web.yaml and also the readyz port in the same clsi.yaml file and saw they were also 8080.
+9. Updated the code and committed to the repo then re-ran skaffold (had a delay as I needed to change my GPG key to my personal Github key instead of Mimecast GPG key)
+
+10. Received an error during skaffold deploy:
+skaffold deploy --images=image1=us-east1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/repo1/image1
+invalid argument "image1=us-east1-docker.pkg.dev//repo1/image1" for "-i, --images" flag: image1=us-east1-docker.pkg.dev//repo1/image1: invalid reference format
+See 'skaffold deploy --help' for usage.
+
+- for some reason my env variable was empty, I guess because I was using a terminal session from earlier where I didn’t source .zshrc
+- fixed that and then redeployed with skaffold
+
+11. Receive a new error running skaffold:
+skaffold deploy --images=image1=us-east1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/repo1/image1
+F1129 11:41:32.627144    1315 cred.go:145] print credential failed with error: Failed to retrieve access token:: failure while executing gcloud, with args [config config-helper --format=json]: exit status 1 (err: ERROR: (gcloud.config.config-helper) There was a problem refreshing your current auth tokens: ('invalid_grant: Account has been deleted', {'error': 'invalid_grant', 'error_description': 'Account has been deleted'})
+
+- GCP suggested i run 'gcloud auth login' again
+- fixed that
+- got a new error when using skaffold:
+skaffold deploy --images=image1=us-east1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/repo1/image1
+Tags used in deployment:
+ - image1 -> us-east1-docker.pkg.dev/sdo-interview-2023-11-24-hb/repo1/image1
+Starting deploy...
+Get "https://34.74.131.181/version": dial tcp 34.74.131.181:443: i/o timeout
+
+- I suspect it may be because I forgot to set kubectl to interact with the GKE cluster, so I ran the following with a Google search:
+gcloud container clusters get-credentials microservices --zone us-east1 --project sdo-interview-2023-11-24-hb
+Fetching cluster endpoint and auth data.
+kubeconfig entry generated for microservices.
+
+12. Yes that fixed it, skaffold redeployment ran however there seems to be an issue for the ‘web’ pod (insufficient memory and cpu):
+skaffold deploy --images=image1=us-east1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/repo1/image1
+Tags used in deployment:
+ - image1 -> us-east1-docker.pkg.dev/sdo-interview-2023-11-24-hb/repo1/image1
+Starting deploy...
+ - deployment.apps/clsi configured
+ - service/clsi configured
+ - horizontalpodautoscaler.autoscaling/clsi unchanged
+ - podmonitoring.monitoring.googleapis.com/clsi unchanged
+ - deployment.apps/web configured
+ - service/web configured
+Waiting for deployments to stabilize...
+ - deployment/clsi: creating container clsi
+    - pod/clsi-9688fd746-84gw8: creating container clsi
+ - deployment/web: 0/2 nodes are available: 2 Insufficient cpu, 2 Insufficient memory. preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod..
+    - pod/web-869bcdbdf-5tctg: 0/2 nodes are available: 2 Insufficient cpu, 2 Insufficient memory. preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod..
+
+- Just having a quick look at the pods status again:
+kubectl get pods
+NAME                   READY   STATUS             RESTARTS         AGE
+clsi-56f4f597f-qpjdn   0/1     CrashLoopBackOff   2361 (45s ago)   4d17h
+clsi-9688fd746-84gw8   0/1     Running            0                6m25s
+web-589dc4d866-lbls8   0/1     Running            0                4d17h
+web-869bcdbdf-5tctg    0/1     Running            0                6m25s
+
+13. Using ‘kubectl top nodes’, I can’t see that any of the pods are using a massive amount of cpu or memory. Also we do have autoscaling enabled.
+
+kubectl top nodes
+NAME                                     CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
+gk3-microservices-pool-2-1133f115-6678   363m         18%    2887Mi          48%
+gk3-microservices-pool-2-1f401983-84vj   150m         7%     2536Mi          42%
+
+14. Wanted to have a closer look at the pod with the issue:
+kubectl describe pod clsi-56f4f597f-qpjdn
+Name:             clsi-56f4f597f-qpjdn
+Namespace:        default
+Priority:         0
+Service Account:  default
+Node:             gk3-microservices-pool-2-1f401983-84vj/10.142.0.5
+Start Time:       Fri, 24 Nov 2023 18:24:22 +0000
+Labels:           app=clsi
+                  pod-template-hash=56f4f597f
+                  skaffold.dev/run-id=ef4dc17d-6b44-4136-9d35-4134a1ecb965
+Annotations:      <none>
+Status:           Running
+SeccompProfile:   RuntimeDefault
+IP:               10.16.128.68
+IPs:
+  IP:           10.16.128.68
+Controlled By:  ReplicaSet/clsi-56f4f597f
+Containers:
+  clsi:
+    Container ID:  containerd://6d7fbc33dfc828cae0a145fd85d0c7d24f218c5861c95188440fa40336d3a47b
+    Image:         us-east1-docker.pkg.dev/sdo-interview-2023-11-24-hb/repo1/image1
+    Image ID:      us-east1-docker.pkg.dev/sdo-interview-2023-11-24-hb/repo1/image1@sha256:bef55080b1a917c07cb40c8e32d17e6833fedc953c6a681d6d6efd910f220598
+    Port:          8080/TCP
+    Host Port:     0/TCP
+    Command:
+      clsi
+    State:          Waiting
+      Reason:       CrashLoopBackOff
+    Last State:     Terminated
+      Reason:       Completed
+      Exit Code:    0
+      Started:      Wed, 29 Nov 2023 12:04:16 +0000
+      Finished:     Wed, 29 Nov 2023 12:04:36 +0000
+    Ready:          False
+    Restart Count:  2363
+    Limits:
+      cpu:                500m
+      ephemeral-storage:  1Gi
+      memory:             2Gi
+    Requests:
+      cpu:                500m
+      ephemeral-storage:  1Gi
+      memory:             2Gi
+    Liveness:             http-get http://:3001/livez delay=5s timeout=1s period=5s #success=1 #failure=3
+    Readiness:            http-get http://:8080/readyz delay=5s timeout=1s period=10s #success=1 #failure=3
+    Environment:          <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-4p8j5 (ro)
+Conditions:
+  Type              Status
+  Initialized       True
+  Ready             False
+  ContainersReady   False
+  PodScheduled      True
+Volumes:
+  kube-api-access-4p8j5:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    ConfigMapOptional:       <nil>
+    DownwardAPI:             true
+QoS Class:                   Guaranteed
+Node-Selectors:              <none>
+Tolerations:                 kubernetes.io/arch=amd64:NoSchedule
+                             node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age                        From     Message
+  ----     ------     ----                       ----     -------
+  Warning  Unhealthy  32m (x7057 over 4d17h)     kubelet  Liveness probe failed: Get "http://10.16.128.68:3001/livez": dial tcp 10.16.128.68:3001: connect: connection refused
+  Warning  BackOff    2m24s (x28867 over 4d17h)  kubelet  Back-off restarting failed container clsi in pod clsi-56f4f597f-qpjdn_default(b7a5803d-af3f-458d-8ac0-07efdad69f82)
+
+15. Ran out of time
